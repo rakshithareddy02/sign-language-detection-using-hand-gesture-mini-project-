@@ -1,0 +1,104 @@
+# ========== BLOCK 1: IMPORT LIBRARIES ==========
+# Why needed: Import ML and data processing libraries
+import pickle #to save files
+import numpy as np
+from sklearn.svm import SVC
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, classification_report
+import os
+
+# ========== BLOCK 2: DEFINE SIGNS ==========
+# Why needed: Same 5 signs as in data collection
+SIGNS = ['hello', 'please', 'yes', 'no', 'help']
+
+
+# ========== BLOCK 3: LOAD COLLECTED DATA ==========
+# Why needed: Load all saved samples from data collection phase
+def load_data():
+    X = []  # Features (hand landmarks)
+    y = []  # Labels (sign names)
+
+    print("Loading data...")
+    for sign_idx, sign in enumerate(SIGNS):
+        data_file = f'sign_data/{sign}.pkl' # Creates path like: 'sign_data/hello.pkl'
+
+        if not os.path.exists(data_file):
+            print(f"Warning: {data_file} not found!")
+            continue
+
+        with open(data_file, 'rb') as f:
+            samples = pickle.load(f)
+
+        # Why needed: Add all samples with their corresponding labels
+        for sample in samples:
+            X.append(sample)
+            y.append(sign_idx)  # Use numeric labels (0-7)
+
+        print(f"Loaded {len(samples)} samples for '{sign}'")
+
+    return np.array(X), np.array(y)
+
+
+# ========== BLOCK 4: TRAIN SVM MODEL ==========
+# Why needed: Train the machine learning model on collected data
+def train_model():
+    # Load data
+    X, y = load_data()
+
+    if len(X) == 0:
+        print("Error: No data found! Run data collection first.")
+        return
+
+    print(f"\nTotal samples: {len(X)}")
+    print(f"Feature dimensions: {X.shape}")
+
+    # ========== BLOCK 5: SPLIT DATA ==========
+    # Why needed: Divide data into training (80%) and testing (20%) sets
+    # This helps evaluate model performance on unseen data
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42, stratify=y
+    )
+
+    print(f"Training samples: {len(X_train)}")
+    print(f"Testing samples: {len(X_test)}")
+
+    # ========== BLOCK 6: CREATE AND TRAIN SVM ==========
+    # Why needed: SVM is a powerful classifier for this type of data
+    # kernel='rbf': Radial Basis Function for non-linear classification
+    # C=10: Regularization parameter (controls margin vs errors)
+    # gamma='scale': Controls decision boundary smoothness
+    print("\nTraining SVM model...")
+    model = SVC(kernel='rbf', C=10, gamma='scale', probability=True)
+    model.fit(X_train, y_train)
+
+    # ========== BLOCK 7: EVALUATE MODEL ==========
+    # Why needed: Check how well the model performs
+    y_pred = model.predict(X_test)
+    accuracy = accuracy_score(y_test, y_pred)
+
+    print(f"\n{'=' * 50}")
+    print(f"Model Accuracy: {accuracy * 100:.2f}%")
+    print(f"{'=' * 50}")
+
+    # Why needed: Detailed per-class performance
+    print("\nClassification Report:")
+    print(classification_report(y_test, y_pred, target_names=SIGNS))
+
+    # ========== BLOCK 8: SAVE TRAINED MODEL ==========
+    # Why needed: Save model to file for later use in detection
+    model_data = {
+        'model': model,
+        'signs': SIGNS
+    }
+
+    with open('sign_language_model.pkl', 'wb') as f:
+        pickle.dump(model_data, f)
+
+    print("\nModel saved as 'sign_language_model.pkl'")
+
+
+# ========== BLOCK 9: MAIN EXECUTION ==========
+if __name__ == "__main__":
+    print("Sign Language Model Training")
+    print("=" * 50)
+    train_model()
