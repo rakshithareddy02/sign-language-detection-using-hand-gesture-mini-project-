@@ -1,0 +1,116 @@
+# ========== BLOCK 1: IMPORT LIBRARIES ==========
+# Why needed: Import all necessary libraries for the project
+import cv2  # For camera access and image processing
+import mediapipe as mp  # For hand detection and landmark extraction
+import numpy as np  # For numerical operations on data
+import os  # For file and directory operations
+import pickle  # For saving/loading data
+
+# ========== BLOCK 2: INITIALIZE MEDIAPIPE ==========
+# Why needed: Set up MediaPipe to detect hands and extract 21 landmarks
+mp_hands = mp.solutions.hands # MediaPipe's hand detection tool
+mp_drawing = mp.solutions.drawing_utils #draw skeleton on hands
+hands = mp_hands.Hands(
+    static_image_mode=False,  # Video mode (not static images)
+    max_num_hands=1,  # Detect only 1 hand for simplicity
+    min_detection_confidence=0.7  # Minimum confidence to detect hand
+)
+
+# ========== BLOCK 3: DEFINE SIGN WORDS ==========
+#  List of 5 words we want to detect
+SIGNS = ['hello', 'please', 'yes', 'no', 'help']
+
+# ========== BLOCK 4: CREATE DATA DIRECTORY ==========
+# Why needed: Create folder to store collected training data
+if not os.path.exists('sign_data'):  # If folder doesn't exist
+    os.makedirs('sign_data') # create a folder
+
+
+def collect_data():
+    cap = cv2.VideoCapture(0)  # Open default webcam
+
+    for sign_idx, sign in enumerate(SIGNS):
+        print(f"\n=== Collecting data for: {sign.upper()} ===")
+        print("Press 's' to start collecting, 'q' to skip to next word")
+
+        samples = []  # Empty list to store hand data
+        collecting = False # Not collecting yet
+        sample_count = 0 # How many samples collected
+        target_samples = 100  # Collect 100 samples per sign
+
+        while True:
+            ret, frame = cap.read() # ret = True if frame read successfully
+                                    # frame = the image from camera
+            if not ret:
+                break  # Exit if camera fails
+
+            frame = cv2.flip(frame, 1) #flips horizontal frame
+            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            results = hands.process(rgb_frame)#Processes the RGB frame
+
+            # Display information
+            cv2.putText(frame, f"Sign: {sign.upper()}", (10, 30),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2) #Displays the current sign being collected
+            cv2.putText(frame, f"Samples: {sample_count}/{target_samples}", (10, 70),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2) #Shows the progress of the data collection
+
+            if collecting:
+                cv2.putText(frame, "COLLECTING...", (10, 110),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2) #a bright red "COLLECTING..."
+            else:
+                cv2.putText(frame, "Press 's' to start", (10, 110),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)# press s to start
+
+            # Draw hand landmarks
+            if results.multi_hand_landmarks: #Checks if any hands were detected
+                for hand_landmarks in results.multi_hand_landmarks: #Loops through each detected hand (
+                    mp_drawing.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)#Draws the visual representation
+
+                    if collecting and sample_count < target_samples:
+                        # Extract landmarks
+                        landmarks = [] #empty list initially
+                        for landmark in hand_landmarks.landmark: #21 landmarks
+                            landmarks.extend([landmark.x, landmark.y, landmark.z])
+
+                        samples.append(landmarks)
+                        sample_count += 1
+
+                        if sample_count >= target_samples:
+                            collecting = False
+                            print(f"Collected {target_samples} samples for {sign}")
+
+            cv2.imshow('Collect Sign Data', frame)
+
+            key = cv2.waitKey(1) & 0xFF
+            if key == ord('s') and not collecting:
+                collecting = True
+                print(f"Started collecting for {sign}...")
+            elif key == ord('q'):
+                break
+
+            if sample_count >= target_samples:
+                break
+
+        # Save collected data
+        if samples:
+            data_file = f'sign_data/{sign}.pkl' #Constructs the file path
+            with open(data_file, 'wb') as f:
+                pickle.dump(samples, f)
+            print(f"Saved {len(samples)} samples for {sign}")
+
+    cap.release()#Releases the video capture object,
+    cv2.destroyAllWindows() #Closes all OpenCV display windows.
+    print("\nData collection complete!")
+
+
+if __name__ == "__main__":
+    print("Sign Language Data Collection")
+    print("=" * 50)
+    print("Instructions:")
+    print("1. Position your hand clearly in frame")
+    print("2. Press 's' to start collecting samples")
+    print("3. Hold the sign steady and move slightly")
+    print("4. Press 'q' to skip to next word")
+    print("=" * 50)
+
+    collect_data()
