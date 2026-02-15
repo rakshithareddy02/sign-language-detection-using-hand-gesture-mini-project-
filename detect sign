@@ -1,0 +1,143 @@
+# ========== BLOCK 1: IMPORT LIBRARIES ==========
+# Why needed: Import necessary libraries for detection
+import cv2
+import mediapipe as mp
+import pickle
+import numpy as np
+
+# ========== BLOCK 2: LOAD TRAINED MODEL ==========
+# Why needed: Load the SVM model we trained earlier
+print("Loading model...")
+with open('sign_language_model.pkl', 'rb') as f:
+    model_data = pickle.load(f)
+    model = model_data['model']
+    SIGNS = model_data['signs']
+
+print(f"Model loaded! Detecting signs: {SIGNS}")
+
+# ========== BLOCK 3: INITIALIZE MEDIAPIPE ==========
+# Why needed: Set up hand detection (same as data collection)
+mp_hands = mp.solutions.hands
+mp_drawing = mp.solutions.drawing_utils
+hands = mp_hands.Hands(
+    static_image_mode=False,
+    max_num_hands=1,
+    min_detection_confidence=0.7
+)
+
+
+# ========== BLOCK 4: REAL-TIME DETECTION FUNCTION ==========
+def detect_signs():
+    # Why needed: Open webcam for live detection
+    cap = cv2.VideoCapture(0)
+
+    # Why needed: Variables for smooth prediction display
+    prediction_history = []  # Store last N predictions
+    history_size = 10  # Use 10 frames for smoothing
+
+    print("\nStarting real-time detection...")
+    print("Press 'q' to quit")
+
+    # ========== BLOCK 5: VIDEO PROCESSING LOOP ==========
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        # Why needed: Flip for mirror effect
+        frame = cv2.flip(frame, 1)
+        h, w, _ = frame.shape
+
+        # Why needed: Convert to RGB for MediaPipe
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        results = hands.process(rgb_frame)
+
+        # ========== BLOCK 6: HAND DETECTION AND PREDICTION ==========
+        if results.multi_hand_landmarks:
+            for hand_landmarks in results.multi_hand_landmarks:
+                # Why needed: Draw hand skeleton
+                mp_drawing.draw_landmarks(
+                    frame, hand_landmarks, mp_hands.HAND_CONNECTIONS
+                )
+
+                # ========== BLOCK 7: EXTRACT LANDMARKS ==========
+                # Why needed: Get same 63 features as training data
+                landmarks = []
+                for landmark in hand_landmarks.landmark:
+                    landmarks.extend([landmark.x, landmark.y, landmark.z])
+
+                # Why needed: Reshape for model prediction (needs 2D array)
+                landmarks = np.array(landmarks).reshape(1, -1)
+
+                # ========== BLOCK 8: MAKE PREDICTION ==========
+                # Why needed: Use trained model to predict sign
+                prediction = model.predict(landmarks)[0]
+                predicted_sign = SIGNS[prediction]
+
+                # Why needed: Get confidence scores for all classes
+                probabilities = model.predict_proba(landmarks)[0]
+                confidence = probabilities[prediction] * 100
+
+                # ========== BLOCK 9: SMOOTH PREDICTIONS ==========
+                # Why needed: Reduce flickering by using prediction history
+                prediction_history.append(prediction)
+                if len(prediction_history) > history_size:
+                    prediction_history.pop(0)
+
+                # Why needed: Use most common prediction from history
+                if len(prediction_history) >= 5:
+                    most_common = max(set(prediction_history),
+                                      key=prediction_history.count)
+                    predicted_sign = SIGNS[most_common]
+
+                # ========== BLOCK 10: DISPLAY PREDICTION ==========
+                # Why needed: Show prediction on screen
+                # Create background rectangle for better text visibility
+                cv2.rectangle(frame, (10, 10), (400, 120), (0, 0, 0), -1)
+
+                # Display predicted sign (large text)
+                cv2.putText(frame, f"Sign: {predicted_sign.upper()}",
+                            (20, 50), cv2.FONT_HERSHEY_SIMPLEX,
+                            1.2, (0, 255, 0), 3)
+
+                # Display confidence
+                cv2.putText(frame, f"Confidence: {confidence:.1f}%",
+                            (20, 90), cv2.FONT_HERSHEY_SIMPLEX,
+                            0.7, (255, 255, 0), 2)
+
+                # ========== BLOCK 11: DISPLAY ALL PROBABILITIES ==========
+                # Why needed: Show confidence for all signs (optional but useful)
+                y_offset = 150
+                for idx, sign in enumerate(SIGNS):
+                    prob = probabilities[idx] * 100
+                    color = (0, 255, 0) if idx == prediction else (200, 200, 200)
+                    cv2.putText(frame, f"{sign}: {prob:.1f}%",
+                                (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX,
+                                0.5, color, 1)
+                    y_offset += 25
+        else:
+            # Why needed: Show message when no hand detected
+            cv2.putText(frame, "No hand detected", (10, 50),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+            prediction_history.clear()
+
+        # ========== BLOCK 12: DISPLAY FRAME ==========
+        cv2.imshow('Sign Language Detector', frame)
+
+        # Why needed: Check for quit key
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
+    # ========== BLOCK 13: CLEANUP ==========
+    # Why needed: Release resources properly
+    cap.release()
+    cv2.destroyAllWindows()
+    hands.close()
+
+
+# ========== BLOCK 14: MAIN EXECUTION ==========
+if __name__ == "__main__":
+    print("=" * 50)
+    print("Sign Language Detector - Real-time Detection")
+    print("=" * 50)
+    detect_signs()
